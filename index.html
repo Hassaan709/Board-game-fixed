@@ -1223,9 +1223,10 @@ h1 {
     alert("Firebase error: " + err.message);
   }
 </script>
-  
-  // ═══════════════════════════════════════════════════════════
-<script>
+
+// ═════════
+
+  <script>
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
 
@@ -1746,14 +1747,14 @@ function selectGame(gameType) {
 function initGameState(gameType) {
   switch(gameType) {
     case 'connect4':
-      return { board: Array(6).fill(null).map(function() { return Array(7).fill(0); }) };
+      return { board: [[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]] };
     case 'tictactoe':
-      return { board: Array(9).fill(null), history: {X: [], O: []}, phase: 'place' };
+      return { board: [null,null,null,null,null,null,null,null,null], history: {X: [], O: []}, phase: 'place' };
     case 'dotsboxes':
       return {
-        hLines: Array(5).fill(null).map(function() { return Array(4).fill(0); }),
-        vLines: Array(4).fill(null).map(function() { return Array(5).fill(0); }),
-        boxes: Array(4).fill(null).map(function() { return Array(4).fill(0); })
+        hLines: [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]],
+        vLines: [[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],
+        boxes: [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
       };
     default:
       return null;
@@ -1804,24 +1805,49 @@ function startMultiplayerGame(gameType, hostPlayer) {
     resetDBMultiplayer();
   }
 }
-
 function syncGameState(gameType, state) {
   if (gameType === 'connect4') {
-    c4board = state.board || c4board;
+    // Firebase converts arrays to objects - convert back
+    c4board = objectToArray2D(state.board) || c4board;
     drawC4();
   } else if (gameType === 'tictactoe') {
-    tttboard = state.board || tttboard;
+    tttboard = objectToArray(state.board) || tttboard;
     ttthistory = state.history || ttthistory;
     tttphase = state.phase || tttphase;
     drawTTT();
   } else if (gameType === 'dotsboxes') {
-    dbh = state.hLines || dbh;
-    dbv = state.vLines || dbv;
-    dbb = state.boxes || dbb;
+    dbh = objectToArray2D(state.hLines) || dbh;
+    dbv = objectToArray2D(state.vLines) || dbv;
+    dbb = objectToArray2D(state.boxes) || dbb;
     drawDB();
   }
 }
 
+// Helper: Convert Firebase object-with-numeric-keys back to array
+function objectToArray(obj) {
+  if (!obj) return null;
+  if (Array.isArray(obj)) return obj;
+  var arr = [];
+  for (var key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      arr[parseInt(key)] = obj[key];
+    }
+  }
+  return arr;
+}
+
+// Helper: Convert 2D array from Firebase object format
+function objectToArray2D(obj) {
+  if (!obj) return null;
+  if (Array.isArray(obj)) return obj;
+  var arr = [];
+  for (var key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      arr[parseInt(key)] = objectToArray(obj[key]);
+    }
+  }
+  return arr;
+}
 function updateTurnFromServer(player) {
   if (currentGame === 'connect4') {
     c4player = player;
@@ -2170,8 +2196,12 @@ function sendMoveToFirebase(moveData) {
 
 function updateFirebaseGameState() {
   if (!roomRef) return;
+  var gameState = {
+    board: c4board,
+    lastMoveTime: Date.now()
+  };
   dbUpdate(roomRef, {
-    'gameState/board': c4board,
+    'gameState': gameState,
     'currentPlayer': c4player,
     'lastActivity': Date.now()
   });
@@ -2391,13 +2421,13 @@ function updateTTTFirebaseState() {
     'gameState': {
       board: tttboard,
       history: ttthistory,
-      phase: tttphase
+      phase: tttphase,
+      lastMoveTime: Date.now()
     },
     'currentPlayer': tttplayer === 'X' ? 1 : 2,
     'lastActivity': Date.now()
   });
 }
-
 function handleTTTWin() {
   var winner = tttplayer === 'X' ? 1 : 2;
   dbUpdate(roomRef, {
@@ -2613,7 +2643,8 @@ function updateDBFirebaseState() {
     'gameState': {
       hLines: dbh,
       vLines: dbv,
-      boxes: dbb
+      boxes: dbb,
+      lastMoveTime: Date.now()
     },
     'currentPlayer': dbplayer,
     'lastActivity': Date.now()
